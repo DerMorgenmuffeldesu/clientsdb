@@ -1,6 +1,6 @@
 import psycopg2
 
-with psycopg2.connect(database="clientsdb", user="postgres", password="") as conn:
+with psycopg2.connect(database="clientsdb", user=" ", password=" ", options="-c client_encoding=utf8") as conn:
 
     def create_db(conn):
         with conn.cursor() as cur:
@@ -19,7 +19,7 @@ with psycopg2.connect(database="clientsdb", user="postgres", password="") as con
                 phone_number VARCHAR(15) NOT NULL
                 )
                 """)
-    conn.commit()
+        conn.commit()
 
 # Function to add a new client
 def add_client(conn, first_name, last_name, email, phones=None):
@@ -28,11 +28,12 @@ def add_client(conn, first_name, last_name, email, phones=None):
             INSERT INTO Client (first_name, last_name, email)
             VALUES (%s, %s, %s)
             RETURNING client_id
-        """, (first_name, last_name, email))
+            """, (first_name, last_name, email))
         client_id = cur.fetchone()[0]
         if phones:
             for phone in phones:
                 add_phone(conn, client_id, phone)
+    conn.commit()
 
 # Function to add a phone for an existing client
 def add_phone(conn, client_id, phone):
@@ -40,100 +41,106 @@ def add_phone(conn, client_id, phone):
         cur.execute("""
             INSERT INTO Phone (client_id, phone_number)
             VALUES (%s, %s)
-        """, (client_id, phone))
+            """, (client_id, phone))
+    conn.commit()
 
 # Function to change client data
-def change_client(conn, client_id, first_name=None, last_name=None, email=None, phones=None):
-    with conn.cursor() as cur:
-        if first_name:
-            cur.execute("""
-                UPDATE Client
-                SET first_name = %s
-                WHERE client_id = %s
+def change_client(conn, client_id, first_name="%", last_name="%", email="%", phones="%"):
+    cur = conn.cursor()
+
+    if first_name:
+        cur.execute("""
+            UPDATE Client
+            SET first_name = %s
+            WHERE client_id = %s
             """, (first_name, client_id))
-        if last_name:
-            cur.execute("""
-                UPDATE Client
-                SET last_name = %s
-                WHERE client_id = %s
+        
+    if last_name:
+        cur.execute("""
+            UPDATE Client
+            SET last_name = %s
+            WHERE client_id = %s
             """, (last_name, client_id))
-        if email:
-                cur.execute("""
-                UPDATE Client
-                SET email = %s
-                WHERE client_id = %s
+
+    if email:
+        cur.execute("""
+            UPDATE Client
+            SET email = %s
+            WHERE client_id = %s
             """, (email, client_id))
-        if phones:
-            cur.execute("""
-                DELETE FROM Phone
-                WHERE client_id = %s
+    if phones:
+        cur.execute("""
+            DELETE FROM Phone
+            WHERE client_id = %s
             """, (client_id,))
-            for phone in phones:
-                add_phone(conn, client_id, phone)
+        phones_arr = phones.split(',')
+        for phone in phones_arr:
+            add_phone(conn, client_id, phone)
+    conn.commit()
 
 # Function to delete a phone for an existing client
-def delete_phone(conn, client_id, phone):
+def delete_phone(client_id, phone):
     with conn.cursor() as cur:
         cur.execute("""
             DELETE FROM Phone
             WHERE client_id = %s AND phone_number = %s
         """, (client_id, phone))
+    conn.commit()
 
 # Function to delete an existing client
-def delete_client(conn, client_id):
-    with conn.cursor() as cur:
-        cur.execute("""
-            DELETE FROM Client
-            WHERE client_id = %s
-        """, (client_id,))
+def delete_client(client_id):
+	cur = conn.cursor()
+	cur.execute("""
+		SELECT * FROM Phone
+		WHERE client_id = %s
+		""", (client_id,))
+	phones = cur.fetchall()
+
+	with conn.cursor() as cur:
+		cur.execute("""
+			DELETE FROM Client
+			WHERE client_id = %s
+		    """, (client_id,))
+	conn.commit()
 
 # Function to find a client by their data
-def find_client(conn, first_name=None, last_name=None, email=None, phone=None):
+def find_client(conn, first_name="%", last_name="%", email="%", phone="%"):
     with conn.cursor() as cur:
-        if first_name:
-            cur.execute("""
-                SELECT * FROM Client
-                WHERE first_name = %s
-            """, (first_name,))
-        elif last_name:
-            cur.execute("""
-                SELECT * FROM Client
-                WHERE last_name = %s
-            """, (last_name,))
-        elif email:
-            cur.execute("""
-                SELECT * FROM Client
-                WHERE email = %s
-            """, (email,))
-        elif phone:
-            cur.execute("""
-                SELECT * FROM Client
-                WHERE client_id IN (
-                    SELECT client_id FROM Phone
-                    WHERE phone_number = %s
-                )
-            """, (phone,))
-        else:
-            return None
-        return cur.fetchall()
+        cur.execute("""
+            SELECT * FROM Client
+            WHERE first_name LIKE %s
+            AND last_name LIKE %s
+            AND email LIKE %s
+            """, (first_name, last_name, email))
+        ids = [row[0] for row in cur.fetchall()]
+    if not ids:
+        return []
+
+    cur.execute("""
+		SELECT Client.*, Phone.phone_number
+		FROM Client
+		JOIN Phone ON Client.client_id = Phone.client_id
+		WHERE Client.client_id IN %s
+		AND Phone.phone_number LIKE %s
+		""", (tuple(ids), phone))
+    return cur.fetchall()
 
 # Connecting to the database and calling functions
-with psycopg2.connect(database="clientsdb", user="postgres", password="") as conn:
+with psycopg2.connect(database="clientsdb", user=" ", password=" ", options="-c client_encoding=utf8") as conn:
     create_db(conn)
 
     # Adding a new client
-    add_client(conn, "John", "Doe", "john.doe@example.com", ["123456789", "987654321"])
+    add_client(conn, "Yan", "Smith", "yan.sm@example.com", ["8192831234", "436867879"])
 
     # Changing client data
-    change_client(conn, 1, first_name="", last_name="", email="", phones=["555555555", "999999999"])
+    change_client(conn, 1, first_name="", last_name="", email="", phones=[" ", " "])
 
     # Deleting a phone for a client
-    delete_phone(conn, 1, "123456789")
+    delete_phone(conn, 1, "8192831234")
 
-    # Deleting a client
-    delete_phone(conn, 1)
+     # Deleting a client
     delete_client(conn, 1)
 
     # Finding a client
-    result = find_client(conn, first_name= "", last_name="", email="", phone="")
-    print("Found client:", result)
+    result = find_client(conn, first_name= " ", last_name=" ", email=" ", phone=" ")
+    print("Found client: ", result)
